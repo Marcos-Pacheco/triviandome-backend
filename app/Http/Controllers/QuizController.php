@@ -61,6 +61,8 @@ class QuizController extends Controller
         ]);
 
         $quiz->update($request->all());
+        $quiz->refresh();
+        $quiz->load("questions.questionType");
 
         return response()->json($quiz);
     }
