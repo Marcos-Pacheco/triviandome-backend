@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\GameEnded;
+use App\Events\PlayerJoined;
+use App\Events\GameStarted;
+use App\Events\QuestionChanged;
 use App\Models\GameSession;
 use App\Models\Quiz;
 use Illuminate\Http\Request;
@@ -62,37 +66,56 @@ class GameSessionController extends Controller
             return response()->json(["message" => "Game session is not in waiting status."], 400);
         }
 
-        $gameSession->status = "in_progress";
-        $gameSession->save();
-
-        // TODO: Broadcast event to connected players
+        $gameSession->update(['status' => 'in_progress']);
+        broadcast(new GameStarted($gameSession->session_code));
 
         return response()->json($gameSession);
     }
 
     /**
-     * Move to the next question in the specified game session.
+     * Enters the player into the session.
      */
+    public function join(GameSession $gameSession)
+    {
+        $request = request();
+
+        $request->validate([
+            'session_code' => 'required|exists:game_sessions,session_code',
+            'name' => 'required|string|max:50'
+        ]);
+
+        // Check if game hasn't started
+        if ($gameSession->status !== 'waiting') {
+            return response()->json([
+                'message' => 'Game has already started'
+            ], 400);
+        }
+
+        // Create player
+        $player = $gameSession->players()->create([
+            'name' => $request->name,
+            'score' => 0
+        ]);
+
+        $player->load('gameSession');
+
+        // Broadcast join event
+        broadcast(new PlayerJoined($gameSession, $request->name));
+
+        return response()->json($player, 201);
+    }
+
     public function nextQuestion(GameSession $gameSession)
     {
-        if ($gameSession->quiz->user_id !== Auth::id()) {
-            return response()->json(["message" => "Unauthorized"], 403);
-        }
-
-        if ($gameSession->status !== "in_progress") {
-            return response()->json(["message" => "Game session is not in progress."], 400);
-        }
-
         $totalQuestions = $gameSession->quiz->questions->count();
 
         if ($gameSession->current_question_index < $totalQuestions - 1) {
-            $gameSession->current_question_index++;
-            $gameSession->save();
-            // TODO: Broadcast event to connected players with new question
+            broadcast(new QuestionChanged($gameSession));
         } else {
             $gameSession->status = "finished";
             $gameSession->save();
-            // TODO: Broadcast event to connected players with results
+
+            broadcast(new GameEnded($gameSession));
         }
 
         return response()->json($gameSession);
@@ -106,11 +129,13 @@ class GameSessionController extends Controller
         if ($gameSession->quiz->user_id !== Auth::id()) {
             return response()->json(["message" => "Unauthorized"], 403);
         }
-
+        
+        $gameSession->load("players");
         $gameSession->status = "finished";
         $gameSession->save();
 
-        // TODO: Broadcast event to connected players with final results
+        // Broadcast session ended event with results
+        broadcast(new GameEnded($gameSession));
 
         return response()->json($gameSession);
     }

@@ -37,6 +37,7 @@ Route::middleware("auth:sanctum")->group(function () {
     Route::post("game-sessions", [GameSessionController::class, "store"]);
     Route::get("game-sessions/{gameSession}", [GameSessionController::class, "show"]);
     Route::post("game-sessions/{gameSession}/start", [GameSessionController::class, "start"]);
+    Route::post("game-sessions/{gameSession}/join", [GameSessionController::class, "join"]);
     Route::post("game-sessions/{gameSession}/next-question", [GameSessionController::class, "nextQuestion"]);
     Route::post("game-sessions/{gameSession}/end", [GameSessionController::class, "end"]);
 });
